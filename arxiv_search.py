@@ -138,30 +138,72 @@ def _format_record_for_output(rec: ArxivRecord) -> Dict[str, Any]:
     }
 
 
-def save_search_results(
+def _get_daily_dir(base_dir: str) -> Path:
+    """Return today's date-based subdirectory, creating it if needed."""
+    today = datetime.now().strftime("%Y-%m-%d")
+    daily_dir = Path(base_dir) / "searches" / today
+    daily_dir.mkdir(parents=True, exist_ok=True)
+    return daily_dir
+
+
+def _build_output(
     records: List[ArxivRecord],
+    *,
     search_query: Optional[str],
     id_list: Optional[List[str]],
-    output_dir: str = ".",
-) -> str:
-    """
-    Save search results to a timestamped JSON file.
-    
-    Returns the path to the created file.
-    """
-    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    filename = f"arxiv_search_{timestamp}.json"
-    filepath = Path(output_dir) / filename
-    
-    output = {
-        "search_metadata": {
-            "timestamp": datetime.now().isoformat(),
+    max_results: int,
+    start: int,
+    sort_by: Optional[str],
+    sort_order: Optional[str],
+) -> Dict[str, Any]:
+    """Build the full output dict with query parameters and results."""
+    return {
+        "query_parameters": {
             "search_query": search_query,
             "id_list": id_list,
+            "max_results": max_results,
+            "start": start,
+            "sort_by": sort_by,
+            "sort_order": sort_order,
+        },
+        "search_metadata": {
+            "timestamp": datetime.now().isoformat(),
             "total_results": len(records),
         },
         "results": [_format_record_for_output(rec) for rec in records],
     }
+
+
+def save_search_results(
+    records: List[ArxivRecord],
+    *,
+    search_query: Optional[str],
+    id_list: Optional[List[str]],
+    max_results: int,
+    start: int,
+    sort_by: Optional[str],
+    sort_order: Optional[str],
+    output_dir: str = ".",
+) -> str:
+    """
+    Save search results to a timestamped JSON file inside today's date folder.
+    
+    Returns the path to the created file.
+    """
+    daily_dir = _get_daily_dir(output_dir)
+    timestamp = datetime.now().strftime("%H-%M-%S")
+    filename = f"arxiv_search_{timestamp}.json"
+    filepath = daily_dir / filename
+
+    output = _build_output(
+        records,
+        search_query=search_query,
+        id_list=id_list,
+        max_results=max_results,
+        start=start,
+        sort_by=sort_by,
+        sort_order=sort_order,
+    )
     
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(output, f, indent=2, ensure_ascii=False)
@@ -332,27 +374,22 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(json.dumps(rec.to_json(), ensure_ascii=False))
     else:
         # Save to file (auto-generated or specified)
+        query_kwargs = dict(
+            search_query=search_query,
+            id_list=id_list,
+            max_results=args.max_results,
+            start=args.start,
+            sort_by=args.sort_by,
+            sort_order=args.sort_order,
+        )
         if args.output:
-            # User specified a file path
-            output = {
-                "search_metadata": {
-                    "timestamp": datetime.now().isoformat(),
-                    "search_query": search_query,
-                    "id_list": id_list,
-                    "total_results": len(records),
-                },
-                "results": [_format_record_for_output(rec) for rec in records],
-            }
+            output = _build_output(records, **query_kwargs)
             with open(args.output, "w", encoding="utf-8") as f:
                 json.dump(output, f, indent=2, ensure_ascii=False)
             filepath = args.output
         else:
-            # Auto-generate timestamped filename
             filepath = save_search_results(
-                records=records,
-                search_query=search_query,
-                id_list=id_list,
-                output_dir=args.output_dir,
+                records, **query_kwargs, output_dir=args.output_dir,
             )
         
         # Print summary to terminal

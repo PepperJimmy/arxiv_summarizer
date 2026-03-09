@@ -1,4 +1,5 @@
 # Search result logs
+searches/
 arxiv_search_*.json
 
 # Python
