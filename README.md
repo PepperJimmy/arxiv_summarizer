@@ -26,11 +26,11 @@ A simple command-line tool to search the arXiv API and save results as human-rea
    OPENAI_API_KEY=your_key_here
    ```
 
-5. **Run the configuration script** (required before first use):
+5. **Configure the workspace** (required before first use):
    ```bash
-   python configure.py -c "."
+   python configure.py
    ```
-   This normalizes file names in the workspace for cross-platform compatibility. The search script will not function correctly without this step.
+   Normalizes file names for consistent path resolution across platforms. The search script will not run without this step.
 
 ## Quick Start
 
@@ -155,14 +155,6 @@ Results are saved as JSON with this structure:
 ```
 
 The `plain_english_summary` field is omitted when running with `--no-summarize`.
-
-## Configuration
-
-`configure.py` normalizes file names in the project workspace by stripping unwanted characters that can cause issues with certain build tools, shell scripts, or cross-platform compatibility. Run it after cloning or when adding new files to ensure consistent naming conventions.
-
-```bash
-python configure.py -c "."
-```
 
 ## Tips
 

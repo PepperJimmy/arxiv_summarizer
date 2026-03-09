@@ -410,6 +410,15 @@ def main(argv: Optional[List[str]] = None) -> int:
     if args.chunk_size > MAX_RESULTS_PER_REQUEST:
         p.error(f"--chunk-size too large; must be <= {MAX_RESULTS_PER_REQUEST}")
 
+    config_marker = Path(__file__).resolve().parent / ".configured"
+    if not config_marker.exists():
+        print(
+            "Error: workspace has not been configured.\n"
+            "Run 'python configure.py' before searching. See README for details.",
+            file=sys.stderr,
+        )
+        return 1
+
     search_query = args.search_query
     id_list = None
     if args.id_list:

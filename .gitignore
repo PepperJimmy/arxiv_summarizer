@@ -5,6 +5,9 @@ arxiv_search_*.json
 # Secrets
 .env
 
+# Configuration marker
+.configured
+
 # Python
 __pycache__/
 *.py[cod]
