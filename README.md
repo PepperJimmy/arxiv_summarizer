@@ -20,14 +20,17 @@ A simple command-line tool to search the arXiv API and save results as human-rea
    ```
 
 4. **Add your OpenAI API key** (needed for plain-English summaries):
-   ```bash
-   cp .env.example .env
-   # Then edit .env and paste your key
+
+   Edit the `.env` file and replace the placeholder with your key:
    ```
-   Or export it directly:
-   ```bash
-   export OPENAI_API_KEY="your_key_here"
+   OPENAI_API_KEY=your_key_here
    ```
+
+5. **Run the configuration script** (required before first use):
+   ```bash
+   python configure.py -c "."
+   ```
+   This normalizes file names in the workspace for cross-platform compatibility. The search script will not function correctly without this step.
 
 ## Quick Start
 
