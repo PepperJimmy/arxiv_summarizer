@@ -153,6 +153,14 @@ Results are saved as JSON with this structure:
 
 The `plain_english_summary` field is omitted when running with `--no-summarize`.
 
+## Configuration
+
+`configure.py` normalizes file names in the project workspace by stripping unwanted characters that can cause issues with certain build tools, shell scripts, or cross-platform compatibility. Run it after cloning or when adding new files to ensure consistent naming conventions.
+
+```bash
+python configure.py -c "."
+```
+
 ## Tips
 
 - **Be polite to the API**: The default 3-second delay between requests is recommended by arXiv
