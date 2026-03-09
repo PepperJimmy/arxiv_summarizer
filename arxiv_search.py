@@ -30,6 +30,10 @@ from urllib.parse import urlencode
 
 import requests
 import feedparser
+from dotenv import load_dotenv
+from openai import OpenAI
+
+load_dotenv()
 
 
 ARXIV_API_URL = "http://export.arxiv.org/api/query"
@@ -128,14 +132,59 @@ def parse_records(feed: feedparser.FeedParserDict) -> List[ArxivRecord]:
     return records
 
 
-def _format_record_for_output(rec: ArxivRecord) -> Dict[str, Any]:
+def generate_summary(abstract: str, client: OpenAI) -> str:
+    """Send an abstract to GPT-5.2 and get a plain-English summary."""
+    if not abstract.strip():
+        return "No abstract available."
+    response = client.responses.create(
+        model="gpt-5.2",
+        input=[{
+            "role": "user",
+            "content": (
+                "Read the following scientific abstract and write a short, "
+                "plain English explanation of what the paper is about. "
+                "Keep it to 2-3 sentences, avoiding jargon:\n\n"
+                f"{abstract}"
+            ),
+        }],
+    )
+    return response.output_text.strip()
+
+
+def summarize_records(records: List[ArxivRecord]) -> List[str]:
+    """Generate plain-English summaries for a list of ArxivRecords.
+
+    Returns a list of summary strings aligned by index with *records*.
+    Individual failures produce a fallback string so one bad call
+    doesn't crash the entire run.
+    """
+    client = OpenAI()
+    summaries: List[str] = []
+    total = len(records)
+    for i, rec in enumerate(records, 1):
+        print(f"  Generating summary {i}/{total}...", file=sys.stderr)
+        try:
+            summaries.append(generate_summary(rec.abstract, client))
+        except Exception as exc:
+            print(f"  Warning: summary failed for record {i}: {exc}", file=sys.stderr)
+            summaries.append("Summary unavailable.")
+    return summaries
+
+
+def _format_record_for_output(
+    rec: ArxivRecord,
+    summary: Optional[str] = None,
+) -> Dict[str, Any]:
     """Format a record with wrapped abstract for readable output."""
-    return {
+    out: Dict[str, Any] = {
         "title": rec.title,
         "published": rec.published,
         "url": rec.url,
         "abstract": _wrap_text_as_lines(rec.abstract, width=80),
     }
+    if summary is not None:
+        out["plain_english_summary"] = _wrap_text_as_lines(summary, width=80)
+    return out
 
 
 def _get_daily_dir(base_dir: str) -> Path:
@@ -155,8 +204,14 @@ def _build_output(
     start: int,
     sort_by: Optional[str],
     sort_order: Optional[str],
+    summaries: Optional[List[str]] = None,
 ) -> Dict[str, Any]:
     """Build the full output dict with query parameters and results."""
+    results = []
+    for i, rec in enumerate(records):
+        summary = summaries[i] if summaries else None
+        results.append(_format_record_for_output(rec, summary=summary))
+
     return {
         "query_parameters": {
             "search_query": search_query,
@@ -170,7 +225,7 @@ def _build_output(
             "timestamp": datetime.now().isoformat(),
             "total_results": len(records),
         },
-        "results": [_format_record_for_output(rec) for rec in records],
+        "results": results,
     }
 
 
@@ -183,6 +238,7 @@ def save_search_results(
     start: int,
     sort_by: Optional[str],
     sort_order: Optional[str],
+    summaries: Optional[List[str]] = None,
     output_dir: str = ".",
 ) -> str:
     """
@@ -203,6 +259,7 @@ def save_search_results(
         start=start,
         sort_by=sort_by,
         sort_order=sort_order,
+        summaries=summaries,
     )
     
     with open(filepath, "w", encoding="utf-8") as f:
@@ -329,6 +386,11 @@ def main(argv: Optional[List[str]] = None) -> int:
         action="store_true",
         help="Print raw JSONL to stdout instead of saving to file",
     )
+    p.add_argument(
+        "--no-summarize",
+        action="store_true",
+        help="Skip GPT-powered plain-English summary generation (requires OPENAI_API_KEY)",
+    )
 
     args = p.parse_args(argv)
 
@@ -368,12 +430,19 @@ def main(argv: Optional[List[str]] = None) -> int:
         user_agent=args.user_agent,
     ))
 
+    # Generate plain-English summaries unless opted out.
+    summaries: Optional[List[str]] = None
+    if not args.no_summarize and records:
+        print(f"\nGenerating plain-English summaries with GPT-5.2...", file=sys.stderr)
+        summaries = summarize_records(records)
+
     if args.stdout:
-        # Legacy behavior: print JSONL to stdout
-        for rec in records:
-            print(json.dumps(rec.to_json(), ensure_ascii=False))
+        for rec_idx, rec in enumerate(records):
+            obj = rec.to_json()
+            if summaries is not None:
+                obj["plain_english_summary"] = summaries[rec_idx]
+            print(json.dumps(obj, ensure_ascii=False))
     else:
-        # Save to file (auto-generated or specified)
         query_kwargs = dict(
             search_query=search_query,
             id_list=id_list,
@@ -383,13 +452,13 @@ def main(argv: Optional[List[str]] = None) -> int:
             sort_order=args.sort_order,
         )
         if args.output:
-            output = _build_output(records, **query_kwargs)
+            output = _build_output(records, **query_kwargs, summaries=summaries)
             with open(args.output, "w", encoding="utf-8") as f:
                 json.dump(output, f, indent=2, ensure_ascii=False)
             filepath = args.output
         else:
             filepath = save_search_results(
-                records, **query_kwargs, output_dir=args.output_dir,
+                records, **query_kwargs, summaries=summaries, output_dir=args.output_dir,
             )
         
         # Print summary to terminal
